@@ -39,6 +39,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/vmess"
 	"github.com/sagernet/sing-box/service/resolved"
 	"github.com/sagernet/sing-box/service/ssmapi"
+	"github.com/sagernet/sing-box/protocol/xhttp"
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
@@ -95,10 +96,12 @@ func OutboundRegistry() *outbound.Registry {
 	vless.RegisterOutbound(registry)
 	anytls.RegisterOutbound(registry)
 	snellprotocol.RegisterOutbound(registry)
+	xhttp.RegisterOutbound(registry)
 
 	registerQUICOutbounds(registry)
 	registerWireGuardOutbound(registry)
 	registerStubForRemovedOutbounds(registry)
+	
 
 	return registry
 }

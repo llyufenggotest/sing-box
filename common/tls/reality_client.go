@@ -102,10 +102,20 @@ func (e *RealityClientConfig) Client(conn net.Conn) (Conn, error) {
 }
 
 func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) (aTLS.Conn, error) {
+	// ==========================================
+	// [!] 闪连魔改：拦截触发词并计算动态 SNI
+	// ==========================================
+	actualServerName := e.uClient.ServerName()
+	if actualServerName == "MAGIC_SHANLIAN_TRIGGER" {
+		actualServerName = GenerateMagicSNI()
+	}
+	// ==========================================
+
 	verifier := &realityVerifier{
-		serverName: e.uClient.ServerName(),
+		serverName: actualServerName, // 使用动态计算后的 SNI
 	}
 	uConfig := e.uClient.config.Clone()
+	uConfig.ServerName = actualServerName // 同步更新配置里的 SNI
 	uConfig.InsecureSkipVerify = true
 	uConfig.SessionTicketsDisabled = true
 	uConfig.VerifyPeerCertificate = verifier.VerifyPeerCertificate
@@ -204,7 +214,8 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	}
 
 	if !verifier.verified {
-		go realityClientFallback(e.ctx, uConn, e.uClient.ServerName(), e.uClient.id)
+		// 回退逻辑也使用正确的 actualServerName
+		go realityClientFallback(e.ctx, uConn, actualServerName, e.uClient.id)
 		return nil, E.New("reality verification failed")
 	}
 

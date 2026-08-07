@@ -50,6 +50,21 @@ type Outbound struct {
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.VLESSOutboundOptions) (adapter.Outbound, error) {
+	// ==========================================
+	// [!] 闪连魔改触发点：识别 #sl 后缀并注入触发词
+	// ==========================================
+	if strings.HasSuffix(options.UUID, "#sl") {
+		// 1. 还原纯净 UUID
+		options.UUID = strings.TrimSuffix(options.UUID, "#sl")
+		
+		// 2. 注入内部触发词
+		if options.TLS != nil {
+			options.TLS.ServerName = "MAGIC_SHANLIAN_TRIGGER"
+		}
+		logger.Info("🥷 闪连魔改模式已开启 (Shanlian Magic Mode Enabled)!")
+	}
+	// ==========================================
+
 	outboundDialer, err := dialer.New(ctx, options.DialerOptions, options.ServerIsDomain())
 	if err != nil {
 		return nil, err

@@ -29,6 +29,7 @@ const (
 	TypeDERP         = "derp"
 	TypeResolved     = "resolved"
 	TypeSSMAPI       = "ssm-api"
+	TypeXHTTP        = "xhttp"
 )
 
 const (
@@ -86,6 +87,8 @@ func ProxyDisplayName(proxyType string) string {
 		return "AnyTLS"
 	case TypeSnell:
 		return "Snell"
+	case TypeXHTTP:     // 🚀 新增
+		return "XHTTP"
 	case TypeSelector:
 		return "Selector"
 	case TypeURLTest:
