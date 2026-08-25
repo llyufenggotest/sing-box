@@ -3,6 +3,7 @@ package xhttp
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -17,7 +18,6 @@ import (
 	"github.com/sagernet/sing-box/common/vision"
 	common "github.com/sagernet/sing-box/common/xray"
 	"github.com/sagernet/sing-box/common/xray/buf"
-	"github.com/sagernet/sing-box/common/xray/signal/done"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
 	"golang.org/x/net/http2"
@@ -93,31 +93,44 @@ func (c *DefaultDialerClient) IsClosed() bool {
 }
 
 func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, sessionId string, body io.Reader, uploadOnly bool) (wrc io.ReadCloser, remoteAddr, localAddr net.Addr, err error) {
-	gotConn := done.New()
+	type openStreamResult struct {
+		conn       net.Conn
+		remoteAddr net.Addr
+		localAddr  net.Addr
+		err        error
+	}
+	var publishOnce sync.Once
+	result := make(chan openStreamResult, 1)
+	publish := func(res openStreamResult) {
+		publishOnce.Do(func() {
+			result <- res
+		})
+	}
 	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		GotConn: func(connInfo httptrace.GotConnInfo) {
-			remoteAddr = connInfo.Conn.RemoteAddr()
-			localAddr = connInfo.Conn.LocalAddr()
-			if hook, ok := vision.HookFromContext(ctx); ok {
-				hook(connInfo.Conn)
-			}
-			gotConn.Close()
+			publish(openStreamResult{
+				conn:       connInfo.Conn,
+				remoteAddr: connInfo.Conn.RemoteAddr(),
+				localAddr:  connInfo.Conn.LocalAddr(),
+			})
 		},
 	})
 	method := "GET"
 	if body != nil {
 		method = c.options.GetNormalizedUplinkHTTPMethod()
 	}
-	req, _ := http.NewRequestWithContext(context.WithoutCancel(ctx), method, url, body)
+	reqCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	req, _ := http.NewRequestWithContext(reqCtx, method, url, body)
 	FillStreamRequest(req, sessionId, "", c.options)
-	wrc = &WaitReadCloser{Wait: make(chan struct{})}
+	wrc = &WaitReadCloser{Wait: make(chan struct{}), Cancel: cancel}
 	go func() {
-		resp, err := c.client.Do(req)
-		if err != nil {
-			if !uploadOnly {
+		resp, errDo := c.client.Do(req)
+		if errDo != nil {
+			if !uploadOnly && !errors.Is(errDo, context.Canceled) { // stream-down is enough
 				c.Close()
 			}
-			gotConn.Close()
+			cancel()
+			publish(openStreamResult{err: errDo})
 			common.Close(body)
 			wrc.Close()
 			return
@@ -127,14 +140,24 @@ func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, sessio
 				c.Close()
 			}
 			io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
+			resp.Body.Close() // if it is called immediately, the upload will be interrupted also
 			common.Close(body)
+			cancel()
 			wrc.Close()
 			return
 		}
 		wrc.(*WaitReadCloser).Set(resp.Body)
 	}()
-	<-gotConn.Wait()
+	res := <-result
+	if res.err != nil {
+		err = res.err
+		return
+	}
+	remoteAddr = res.remoteAddr
+	localAddr = res.localAddr
+	if hook, ok := vision.HookFromContext(ctx); ok {
+		hook(res.conn)
+	}
 	return
 }
 
@@ -220,7 +243,8 @@ func (c *DefaultDialerClient) PostPacket(ctx context.Context, url string, sessio
 }
 
 type WaitReadCloser struct {
-	Wait chan struct{}
+	Wait   chan struct{}
+	Cancel context.CancelFunc
 	io.ReadCloser
 	mu     sync.Mutex
 	once   sync.Once
@@ -263,6 +287,9 @@ func (w *WaitReadCloser) Read(b []byte) (int, error) {
 }
 
 func (w *WaitReadCloser) Close() error {
+	if w.Cancel != nil {
+		w.Cancel()
+	}
 	w.mu.Lock()
 	if w.closed {
 		w.mu.Unlock()

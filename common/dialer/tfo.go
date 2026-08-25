@@ -58,26 +58,22 @@ func DialSlowContext(dialer *tcpDialer, ctx context.Context, network string, des
 }
 
 func tfoDialContextWithRetry(dialer *tfo.Dialer, ctx context.Context, network string, address string, b []byte) (net.Conn, error) {
-	var err error
-	for i := 0; i < 4; i++ {
-		var conn net.Conn
-		conn, err = dialer.DialContext(ctx, network, address, b)
-		if err == nil {
-			return conn, nil
-		}
-	}
-	return nil, err
+	return retryDial(ctx, func() (net.Conn, error) {
+		return dialer.DialContext(ctx, network, address, b)
+	})
 }
 
 func tfoDialContextConcurrently(dialer *tfo.Dialer, ctx context.Context, network string, address string, b []byte) (net.Conn, error) {
 	if v := ctx.Value(ctxKeyNoConcurrentDial); v == true || !ConcurrentDial {
 		return dialer.DialContext(ctx, network, address, b)
 	}
+	raceCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	connChan := make(chan ConnWithErr, 3)
 	for i := 0; i < 3; i++ {
 		go func() {
 			var conn ConnWithErr
-			conn.conn, conn.err = tfoDialContextWithRetry(dialer, ctx, network, address, b)
+			conn.conn, conn.err = tfoDialContextWithRetry(dialer, raceCtx, network, address, b)
 			connChan <- conn
 		}()
 	}
@@ -122,8 +118,8 @@ func (c *slowOpenConn) Write(b []byte) (n int, err error) {
 		c.err = err
 	} else {
 		c.conn.Store(conn.(*net.TCPConn))
+		n = len(b)
 	}
-	n = len(b)
 	close(c.create)
 	return
 }

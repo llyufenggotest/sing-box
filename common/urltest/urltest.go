@@ -76,6 +76,7 @@ func (s *HistoryStorage) Close() error {
 }
 
 func URLTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err error) {
+	ctx = context.WithValue(ctx, "nb4a_no_concurrent_dial", true)
 	if link == "" {
 		link = "https://www.gstatic.com/generate_204"
 	}

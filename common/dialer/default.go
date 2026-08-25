@@ -307,11 +307,11 @@ func (d *DefaultDialer) ListenPacket(ctx context.Context, destination M.Socksadd
 	if DoNotSelectInterface || d.networkStrategy == nil {
 		return trackPacketConn(listener.ListenNetworkNamespace[net.PacketConn](d.netns, func() (net.PacketConn, error) {
 			if destination.IsIPv6() {
-			  return trackPacketConn(listenPacketConcurrently(d.udpListener, ctx, N.NetworkUDP, d.udpAddr6))
+				return trackPacketConn(d.udpListener.ListenPacket(ctx, N.NetworkUDP, d.udpAddr6))
 			} else if destination.IsIPv4() && !destination.Addr.IsUnspecified() {
-			  return trackPacketConn(listenPacketConcurrently(d.udpListener, ctx, N.NetworkUDP+"4", d.udpAddr4))
+				return trackPacketConn(d.udpListener.ListenPacket(ctx, N.NetworkUDP+"4", d.udpAddr4))
 			} else {
-			  return trackPacketConn(listenPacketConcurrently(d.udpListener, ctx, N.NetworkUDP, d.udpAddr4))
+				return trackPacketConn(d.udpListener.ListenPacket(ctx, N.NetworkUDP, d.udpAddr4))
 			}
 		}))
 	} else {
@@ -408,84 +408,64 @@ func getResultFromConnChan(connChan chan ConnWithErr) (net.Conn, error) {
 	return nil, err
 }
 
-func dialContextWithRetry(dialer net.Dialer, ctx context.Context, network string, destination string) (net.Conn, error) {
+func isRetryableDialError(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	return errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.ECONNABORTED) ||
+		errors.Is(err, syscall.EHOSTUNREACH) ||
+		errors.Is(err, syscall.ENETUNREACH) ||
+		errors.Is(err, syscall.EADDRNOTAVAIL)
+}
+
+func retryDial(ctx context.Context, dial func() (net.Conn, error)) (net.Conn, error) {
 	var err error
 	for i := 0; i < 4; i++ {
-		var conn net.Conn
-		conn, err = dialer.DialContext(ctx, network, destination)
-		if err == nil {
+		conn, dialErr := dial()
+		if dialErr == nil {
 			return conn, nil
+		}
+		err = dialErr
+		if !isRetryableDialError(err) {
+			break
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if i == 3 {
+			break
+		}
+		timer := time.NewTimer(100 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
 		}
 	}
 	return nil, err
 }
 
+func dialContextWithRetry(dialer net.Dialer, ctx context.Context, network string, destination string) (net.Conn, error) {
+	return retryDial(ctx, func() (net.Conn, error) {
+		return dialer.DialContext(ctx, network, destination)
+	})
+}
+
 func dialContextConcurrently(dialer net.Dialer, ctx context.Context, network string, destination string) (net.Conn, error) {
-	if v := ctx.Value(ctxKeyNoConcurrentDial); v == true || !ConcurrentDial {
+	if v := ctx.Value(ctxKeyNoConcurrentDial); v == true || !ConcurrentDial || N.NetworkName(network) == N.NetworkUDP {
 		return dialer.DialContext(ctx, network, destination)
 	}
+	raceCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	connChan := make(chan ConnWithErr, 3)
 	for i := 0; i < 3; i++ {
 		go func() {
 			var conn ConnWithErr
-			conn.conn, conn.err = dialContextWithRetry(dialer, ctx, network, destination)
+			conn.conn, conn.err = dialContextWithRetry(dialer, raceCtx, network, destination)
 			connChan <- conn
 		}()
 	}
 	return getResultFromConnChan(connChan)
-}
-
-type PacketConnWithErr struct {
-	conn net.PacketConn
-	err  error
-}
-
-func getResultFromPacketConnChan(connChan chan PacketConnWithErr) (net.PacketConn, error) {
-	var i int
-	var err error
-	defer func() {
-		go func(index int) {
-			for i := index; i < 3; i++ {
-				if packet := <-connChan; packet.err == nil {
-					go packet.conn.Close()
-				}
-			}
-			close(connChan)
-		}(i + 1)
-	}()
-	for i = 0; i < 3; i++ {
-		packet := <-connChan
-		if packet.err == nil {
-			return packet.conn, nil
-		}
-		err = packet.err
-	}
-	return nil, err
-}
-
-func listenPacketWithRetry(listener net.ListenConfig, ctx context.Context, network string, address string) (net.PacketConn, error) {
-	var err error
-	for i := 0; i < 4; i++ {
-		var conn net.PacketConn
-		conn, err = listener.ListenPacket(ctx, network, address)
-		if err == nil {
-			return conn, nil
-		}
-	}
-	return nil, err
-}
-
-func listenPacketConcurrently(listener net.ListenConfig, ctx context.Context, network string, address string) (net.PacketConn, error) {
-	if v := ctx.Value(ctxKeyNoConcurrentDial); v == true || !ConcurrentDial {
-		return listener.ListenPacket(ctx, network, address)
-	}
-	connChan := make(chan PacketConnWithErr, 3)
-	for i := 0; i < 3; i++ {
-		go func() {
-			var packet PacketConnWithErr
-			packet.conn, packet.err = listenPacketWithRetry(listener, ctx, network, address)
-			connChan <- packet
-		}()
-	}
-	return getResultFromPacketConnChan(connChan)
 }
