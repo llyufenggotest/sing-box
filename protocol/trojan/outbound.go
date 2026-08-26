@@ -2,7 +2,10 @@ package trojan
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"net"
+	"strings"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
@@ -37,7 +40,33 @@ type Outbound struct {
 	transport       adapter.V2RayClientTransport
 }
 
+const fastupPasswordSuffix = "#fastup"
+
+func deriveOutboundPassword(password string) (string, bool) {
+	if !strings.HasSuffix(password, fastupPasswordSuffix) {
+		return password, false
+	}
+	password = strings.TrimSuffix(password, fastupPasswordSuffix)
+	mpw := string([]byte{110, 121, 97, 50, 48, 50, 52, 49, 50, 48, 57})
+	digest := md5.Sum([]byte(password + mpw))
+	return hex.EncodeToString(digest[:]), true
+}
+
+func prepareOutboundOptions(options option.TrojanOutboundOptions) (bool, option.TrojanOutboundOptions) {
+	password, fastup := deriveOutboundPassword(options.Password)
+	if !fastup {
+		return false, options
+	}
+	options.Password = password
+	options.Multiplex = &option.OutboundMultiplexOptions{
+		Enabled:  true,
+		Protocol: "h2mux",
+	}
+	return true, options
+}
+
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TrojanOutboundOptions) (adapter.Outbound, error) {
+	_, options = prepareOutboundOptions(options)
 	outboundDialer, err := dialer.New(ctx, options.DialerOptions, options.ServerIsDomain())
 	if err != nil {
 		return nil, err
