@@ -1,6 +1,7 @@
 package trojan
 
 import (
+	"crypto/md5"
 	"crypto/sha256"
 	"encoding/hex"
 	"testing"
@@ -11,7 +12,7 @@ import (
 
 func TestDeriveOutboundPasswordStandardUnchanged(t *testing.T) {
 	const password = "ordinary-trojan-password"
-	derived, fastup := deriveOutboundPassword(password)
+	derived, fastup := deriveOutboundPassword(password, "ignored-for-standard")
 	if fastup {
 		t.Fatal("ordinary password was classified as Fastup")
 	}
@@ -25,7 +26,7 @@ func TestDeriveOutboundPasswordStandardUnchanged(t *testing.T) {
 
 func TestDeriveOutboundPasswordFastupFixture(t *testing.T) {
 	const password = "00000000-0000-0000-0000-000000000000#fastup"
-	derived, fastup := deriveOutboundPassword(password)
+	derived, fastup := deriveOutboundPassword(password, "")
 	if !fastup {
 		t.Fatal("Fastup suffix was not detected")
 	}
@@ -52,8 +53,20 @@ func TestPrepareOutboundOptionsFastupForcesH2Mux(t *testing.T) {
 	}
 }
 
+func TestPrepareOutboundOptionsFastupUsesExplicitMpw(t *testing.T) {
+	options := option.TrojanOutboundOptions{Password: "synthetic#fastup", Mpw: "rotated-mpw"}
+	derived, prepared := prepareOutboundOptions(options)
+	if !derived {
+		t.Fatal("Fastup suffix was not detected")
+	}
+	digest := md5.Sum([]byte("synthetic" + options.Mpw))
+	if prepared.Password != hex.EncodeToString(digest[:]) {
+		t.Fatal("explicit mpw was not used")
+	}
+}
+
 func TestPrepareOutboundOptionsStandardPreservesMux(t *testing.T) {
-	options := option.TrojanOutboundOptions{Password: "ordinary"}
+	options := option.TrojanOutboundOptions{Password: "ordinary", Mpw: "must-be-ignored"}
 	options.Multiplex = &option.OutboundMultiplexOptions{Enabled: false, Protocol: "smux"}
 	derived, prepared := prepareOutboundOptions(options)
 	if derived {
@@ -62,11 +75,14 @@ func TestPrepareOutboundOptionsStandardPreservesMux(t *testing.T) {
 	if prepared.Multiplex != options.Multiplex {
 		t.Fatal("standard Trojan multiplex options changed")
 	}
+	if prepared.Password != options.Password {
+		t.Fatal("standard Trojan password changed when mpw was present")
+	}
 }
 
 func TestDeriveOutboundPasswordOnlyMatchesSuffix(t *testing.T) {
 	const password = "ordinary#fastup-not-a-suffix"
-	derived, fastup := deriveOutboundPassword(password)
+	derived, fastup := deriveOutboundPassword(password, "ignored")
 	if fastup || derived != password {
 		t.Fatal("non-suffix marker changed standard Trojan")
 	}

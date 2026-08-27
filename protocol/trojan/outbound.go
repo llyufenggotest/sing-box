@@ -42,18 +42,20 @@ type Outbound struct {
 
 const fastupPasswordSuffix = "#fastup"
 
-func deriveOutboundPassword(password string) (string, bool) {
+func deriveOutboundPassword(password string, mpw string) (string, bool) {
 	if !strings.HasSuffix(password, fastupPasswordSuffix) {
 		return password, false
 	}
 	password = strings.TrimSuffix(password, fastupPasswordSuffix)
-	mpw := string([]byte{110, 121, 97, 50, 48, 50, 52, 49, 50, 48, 57})
+	if mpw == "" {
+		mpw = string([]byte{110, 121, 97, 50, 48, 50, 52, 49, 50, 48, 57})
+	}
 	digest := md5.Sum([]byte(password + mpw))
 	return hex.EncodeToString(digest[:]), true
 }
 
 func prepareOutboundOptions(options option.TrojanOutboundOptions) (bool, option.TrojanOutboundOptions) {
-	password, fastup := deriveOutboundPassword(options.Password)
+	password, fastup := deriveOutboundPassword(options.Password, options.Mpw)
 	if !fastup {
 		return false, options
 	}
