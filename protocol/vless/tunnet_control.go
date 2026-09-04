@@ -3,6 +3,7 @@ package vless
 import (
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"net"
 	"strings"
 	"time"
@@ -204,6 +205,10 @@ func (s *tunNetSnapshot) resolve(now time.Time) (*option.VLESSTunNetResolvedOpti
 	if err != nil || len(ech) == 0 {
 		return nil, E.New("TunNet snapshot has invalid ECH configuration")
 	}
+	echPEM := pem.EncodeToMemory(&pem.Block{Type: "ECH CONFIGS", Bytes: ech})
+	if len(echPEM) == 0 {
+		return nil, E.New("TunNet snapshot ECH PEM encoding failed")
+	}
 	endpoint, err := parseTunNetFrontProxyEndpoint(entry.FrontProxy.Endpoint)
 	if err != nil || endpoint.Port == 0 {
 		return nil, E.New("TunNet active entry has invalid front proxy endpoint")
@@ -215,7 +220,7 @@ func (s *tunNetSnapshot) resolve(now time.Time) (*option.VLESSTunNetResolvedOpti
 		RouteServer:        routeServer,
 		InnerSNI:           tlsAuthority,
 		InnerAuthority:     xhttpAuthority,
-		ECHConfig:          []string{base64.StdEncoding.EncodeToString(ech)},
+		ECHConfig:          []string{strings.TrimSpace(string(echPEM))},
 		XHTTPPath:          xhttpPath,
 		VLESSEncryption:    "mlkem768x25519plus.native.0rtt." + base64.RawURLEncoding.EncodeToString(key) + ".100-35-35",
 	}, nil

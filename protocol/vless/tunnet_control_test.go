@@ -3,6 +3,7 @@ package vless
 import (
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"os"
 	"testing"
 	"time"
@@ -48,7 +49,12 @@ func TestTunNetSnapshotResolve(t *testing.T) {
 	require.Equal(t, "tls.sin-03.example", config.InnerSNI)
 	require.Equal(t, "xhttp.sin-03.example", config.InnerAuthority)
 	require.Equal(t, "mlkem768x25519plus.native.0rtt."+key+".100-35-35", config.VLESSEncryption)
-	require.Equal(t, []string{base64.StdEncoding.EncodeToString([]byte("ech"))}, config.ECHConfig)
+	require.Len(t, config.ECHConfig, 1)
+	block, rest := pem.Decode([]byte(config.ECHConfig[0]))
+	require.NotNil(t, block)
+	require.Equal(t, "ECH CONFIGS", block.Type)
+	require.Empty(t, rest)
+	require.Equal(t, []byte("ech"), block.Bytes)
 	require.Equal(t, "/api/v1/sync/", config.XHTTPPath)
 }
 
