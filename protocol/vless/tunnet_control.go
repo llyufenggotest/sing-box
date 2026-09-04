@@ -222,7 +222,7 @@ func (s *tunNetSnapshot) resolve(now time.Time) (*option.VLESSTunNetResolvedOpti
 		InnerAuthority:     xhttpAuthority,
 		ECHConfig:          []string{strings.TrimSpace(string(echPEM))},
 		XHTTPPath:          xhttpPath,
-		VLESSEncryption:    "mlkem768x25519plus.native.0rtt." + base64.RawURLEncoding.EncodeToString(key) + ".100-35-35",
+		VLESSEncryption:    "mlkem768x25519plus.native.0rtt.100-35-35." + base64.RawURLEncoding.EncodeToString(key),
 	}, nil
 }
 
