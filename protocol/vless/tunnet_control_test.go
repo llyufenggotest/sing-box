@@ -48,7 +48,7 @@ func TestTunNetSnapshotResolve(t *testing.T) {
 	require.Equal(t, "front.example", config.FrontProxyHeaders["Host"])
 	require.Equal(t, "tls.sin-03.example", config.InnerSNI)
 	require.Equal(t, "xhttp.sin-03.example", config.InnerAuthority)
-	require.Equal(t, "mlkem768x25519plus.native.0rtt.100-35-35."+key, config.VLESSEncryption)
+	require.Equal(t, "mlkem768x25519plus.native.0rtt."+key+".100-35-35", config.VLESSEncryption)
 	parsedEncryption, err := parseClientEncryption(config.VLESSEncryption)
 	require.NoError(t, err)
 	require.Equal(t, "100-35-35", parsedEncryption.padding)

@@ -463,26 +463,22 @@ func parseClientEncryption(raw string) (clientEncryptionConfig, error) {
 	default:
 		return cfg, E.New("unsupported encryption RTT value: ", parts[2])
 	}
-	paddingPhase := true
+	paddingPhase := false
 	var paddingParts []string
 	for _, segment := range parts[3:] {
 		segment = strings.TrimSpace(segment)
 		if segment == "" {
 			return cfg, E.New("invalid empty segment in encryption string")
 		}
-		if paddingPhase && len(segment) < 20 {
-			paddingParts = append(paddingParts, segment)
+		if data, err := base64.RawURLEncoding.DecodeString(segment); err == nil && (len(data) == 32 || len(data) == 1184) {
+			if paddingPhase {
+				return cfg, E.New("encryption key found after padding: ", segment)
+			}
+			cfg.keys = append(cfg.keys, data)
 			continue
 		}
-		if data, err := base64.RawURLEncoding.DecodeString(segment); err == nil {
-			if len(data) == 32 || len(data) == 1184 {
-				cfg.keys = append(cfg.keys, data)
-				paddingPhase = false
-				continue
-			}
-			return cfg, E.New("invalid encryption key length: ", len(data))
-		}
-		return cfg, E.New("invalid encryption key: ", segment)
+		paddingPhase = true
+		paddingParts = append(paddingParts, segment)
 	}
 	if len(cfg.keys) == 0 {
 		return cfg, E.New("no valid encryption keys found in encryption string")
