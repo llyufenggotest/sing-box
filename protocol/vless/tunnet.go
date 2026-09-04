@@ -118,6 +118,7 @@ func applyTunNetOptions(options *option.VLESSOutboundOptions) (bool, error) {
 	if tunNet.VLESSEncryption != "" {
 		options.Encryption = tunNet.VLESSEncryption
 	}
+	options.Flow = "xtls-rprx-vision"
 	return routeServer.IsFqdn(), nil
 }
 

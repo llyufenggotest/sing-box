@@ -185,6 +185,7 @@ func TestTunNetOptionsReuseExistingLayers(t *testing.T) {
 	require.Equal(t, "Referer", options.Transport.XHTTPOptions.XPaddingHeader)
 	require.Equal(t, option.PlacementQueryInHeader, options.Transport.XHTTPOptions.XPaddingPlacement)
 	require.Equal(t, "tokenish", options.Transport.XHTTPOptions.XPaddingMethod)
+	require.Equal(t, "xtls-rprx-vision", options.Flow)
 	require.Equal(t, "fixture-encryption-expression", options.Encryption)
 }
 func TestTunNetCONNECTRejectsInjectedHeader(t *testing.T) {
