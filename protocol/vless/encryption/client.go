@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"io"
 	"net"
+	"runtime"
 	"sync"
 	"time"
 
@@ -66,11 +67,15 @@ func (i *ClientInstance) IsFullRandomXorMode() bool {
 	return i.XorMode == 2
 }
 
+func clientUseAES(goos string, hardwareAESGCM bool) bool {
+	return goos != "android" && hardwareAESGCM
+}
+
 func (i *ClientInstance) Handshake(conn net.Conn) (*CommonConn, error) {
 	if i.NfsPKeys == nil {
 		return nil, E.New("uninitialized")
 	}
-	c := NewCommonConn(conn, cpuid.HasAESGCM)
+	c := NewCommonConn(conn, clientUseAES(runtime.GOOS, cpuid.HasAESGCM))
 
 	ivAndRealysLength := 16 + i.RelaysLength
 	pfsKeyExchangeLength := 18 + 1184 + 32 + 16
