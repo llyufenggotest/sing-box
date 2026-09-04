@@ -174,6 +174,17 @@ func TestTunNetOptionsReuseExistingLayers(t *testing.T) {
 	require.Equal(t, []string{"fixture-ech-config"}, []string(options.TLS.ECH.Config))
 	require.Equal(t, "authority.invalid", options.Transport.XHTTPOptions.Host)
 	require.Equal(t, "/tunnet-fixture", options.Transport.XHTTPOptions.Path)
+	require.Equal(t, "stream-up", options.Transport.XHTTPOptions.Mode)
+	require.Equal(t, "Base62", options.Transport.XHTTPOptions.SessionIDTable)
+	require.Equal(t, int32(16), options.Transport.XHTTPOptions.SessionIDLength.From)
+	require.Equal(t, int32(24), options.Transport.XHTTPOptions.SessionIDLength.To)
+	require.Equal(t, int32(100), options.Transport.XHTTPOptions.XPaddingBytes.From)
+	require.Equal(t, int32(1000), options.Transport.XHTTPOptions.XPaddingBytes.To)
+	require.True(t, options.Transport.XHTTPOptions.XPaddingObfsMode)
+	require.Equal(t, "cache", options.Transport.XHTTPOptions.XPaddingKey)
+	require.Equal(t, "Referer", options.Transport.XHTTPOptions.XPaddingHeader)
+	require.Equal(t, option.PlacementQueryInHeader, options.Transport.XHTTPOptions.XPaddingPlacement)
+	require.Equal(t, "tokenish", options.Transport.XHTTPOptions.XPaddingMethod)
 	require.Equal(t, "fixture-encryption-expression", options.Encryption)
 }
 func TestTunNetCONNECTRejectsInjectedHeader(t *testing.T) {

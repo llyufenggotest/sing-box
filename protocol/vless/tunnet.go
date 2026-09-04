@@ -14,6 +14,7 @@ import (
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
+	Xbadoption "github.com/sagernet/sing-box/common/xray/json/badoption"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -103,6 +104,17 @@ func applyTunNetOptions(options *option.VLESSOutboundOptions) (bool, error) {
 	if tunNet.XHTTPPath != "" {
 		options.Transport.XHTTPOptions.Path = tunNet.XHTTPPath
 	}
+	// TunNet's data plane requires the server-verified XHTTP stream-up profile.
+	xhttp := &options.Transport.XHTTPOptions
+	xhttp.Mode = "stream-up"
+	xhttp.SessionIDTable = "Base62"
+	xhttp.SessionIDLength = Xbadoption.Range{From: 16, To: 24}
+	xhttp.XPaddingBytes = Xbadoption.Range{From: 100, To: 1000}
+	xhttp.XPaddingObfsMode = true
+	xhttp.XPaddingKey = "cache"
+	xhttp.XPaddingHeader = "Referer"
+	xhttp.XPaddingPlacement = option.PlacementQueryInHeader
+	xhttp.XPaddingMethod = "tokenish"
 	if tunNet.VLESSEncryption != "" {
 		options.Encryption = tunNet.VLESSEncryption
 	}
