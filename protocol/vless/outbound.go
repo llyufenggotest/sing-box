@@ -58,20 +58,15 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 			return nil, E.Cause(err, "configure TunNet")
 		}
 	}
-	// ==========================================
-	// [!] 闪连魔改触发点：识别 #sl 后缀并注入触发词
-	// ==========================================
+	// Keep the existing Shanlian mode isolated from TunNet and sing-vmess modes.
 	if strings.HasSuffix(options.UUID, "#sl") {
-		// 1. 还原纯净 UUID
 		options.UUID = strings.TrimSuffix(options.UUID, "#sl")
-
-		// 2. 注入内部触发词
 		if options.TLS != nil {
 			options.TLS.ServerName = "MAGIC_SHANLIAN_TRIGGER"
 		}
-		logger.Info("🥷 闪连魔改模式已开启 (Shanlian Magic Mode Enabled)!")
+		logger.Info("Shanlian private VLESS mode enabled")
 	}
-	// ==========================================
+	// #x365 and case-insensitive #juzi are handled independently by sing-vmess.
 
 	outboundDialer, err := dialer.New(ctx, options.DialerOptions, remoteIsDomain)
 	if err != nil {
